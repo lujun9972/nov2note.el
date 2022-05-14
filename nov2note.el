@@ -1,3 +1,5 @@
+(require 'xml)
+(require 'xml-query)
 ;; 1. 打开 epub 对应的笔记文件
 ;; 1.1 定义笔记存放的位置
 (defvar nov2note-directory org-directory)
@@ -39,10 +41,21 @@
 ;; 使用 navpoint 中的 =navLabel= 中的 text 子标签的内容作为 heading 标题
 (defun nov2note--get-label-from-navpoint (navpoint-dom)
   (car (xml-node-children (xml-query '(navLabel text) navpoint-dom))))
-;; 通过 navpoint 中的 =网页文件地址= 作为 heading 的 ID
+;; 结合 navpoint 中的 =网页文件地址= 和epub文件路径组合作为 heading 的 ID
+(defun nov2note--construct-id (epub-file-name filename target)
+  (let ((prefix (md5 epub-file-name))
+        (url (if target
+                 (format "%s#%s" filename target)
+               filename)))
+    (format "%s:%s" prefix url)))
+
 (defun nov2note--generate-id-by-navpoint (dom)
-  (let ((content (xml-get-attribute (xml-query '(content) dom) 'src)))
-    (expand-file-name content nov-temp-dir)))
+  (let* ((url (xml-get-attribute (xml-query '(content) dom) 'src))
+         (url-filename-and-target (nov-url-filename-and-target url))
+         (filename (nth 0 url-filename-and-target))
+         (target (nth 1 url-filename-and-target)))
+    (nov2note--construct-id nov-file-name filename target)))
+
 ;; 将 navpoint 转换成 org heading 格式
 (defun nov2note-navpoint2heading (dom &optional level)
   (let* ((level (or level 1))
@@ -93,9 +106,32 @@
 
 ;; 4. 将选择的内容添加到笔记文件对应的 heading 中
 ;; 4.1 获取当前 nov 页面对应的日记文件中的标题ID
+
+(defun nov2note--find-next-text-property (prop)
+  "跳到下一个包含`PROP'属性的文本位置"
+  (or (get-text-property (point) prop)
+      (get-text-property (or (next-single-property-change (point) prop)
+                             (point))
+                         prop)))
+
+(defun nov2note--find-previous-text-property (prop)
+  "跳到上一个包含`PROP'属性的文本位置"
+  (or (get-text-property (point) prop)
+      (get-text-property (let ((pos (previous-single-property-change (point) prop)))
+                           (if pos
+                               (- pos 1)
+                             (point)))
+                         prop)))
+
 (defun nov2note--get-current-heading-id ()
   "获取当前 nov 页面对应的日记文件中的标题ID"
-  (cdr (aref nov-documents nov-documents-index)))
+  (let* ((document (cdr (aref nov-documents nov-documents-index)))
+         (ncx-path (nov2note--get-ncx-path))
+         (ncx-directory (file-name-directory ncx-path))
+         (filename (file-relative-name document ncx-directory))
+         ;; shr 通过 shr-target-id 属性来标记 target
+         (target (nov2note--find-previous-text-property 'shr-target-id)))
+    (nov2note--construct-id nov-file-name filename target)))
 
 ;; 4.2 将选择的内容添加到笔记文件对应的 heading 中
 (defun nov2note ()
