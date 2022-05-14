@@ -110,7 +110,10 @@
         (let ((pos (or (org-find-entry-with-id id)
                        (point-max))))
           (goto-char pos)
-          (org-end-of-subtree)
+          ;; 跳转到下一个同级或子 heading 之前
+          (if (org-goto-first-child)
+              (left-char)
+            (org-end-of-subtree))
           (org-newline-and-indent)
           (insert content))))))
 
