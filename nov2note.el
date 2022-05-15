@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 (require 'xml)
 (require 'xml-query)
 ;; 1. 打开 epub 对应的笔记文件
@@ -42,18 +43,40 @@
 (defun nov2note--get-label-from-navpoint (navpoint-dom)
   (car (xml-node-children (xml-query '(navLabel text) navpoint-dom))))
 ;; 结合 navpoint 中的 =网页文件地址= 和epub文件路径组合作为 heading 的 ID
-(defun nov2note--construct-id (epub-file-name filename target)
+(defun nov2note--construct-id (epub-file-name filename &optional target)
   (let ((prefix (md5 epub-file-name))
         (url (if target
                  (format "%s#%s" filename target)
                filename)))
     (format "%s:%s" prefix url)))
 
+;; 同时要记录heading的 =id=,用于根据 shr-target-id 寻找对应 heading 时不会找错位置。
+(defvar-local nov2note-filename-heading-target-alist nil
+  "记录各个filename中有效的目录target")
+
+(defun nov2note--get-current-filename ()
+  "返回当前nov页面的相对页面地址"
+  (let* ((document (cdr (aref nov-documents nov-documents-index)))
+         (ncx-path (nov2note--get-ncx-path))
+         (ncx-directory (file-name-directory ncx-path))
+         (filename (file-relative-name document ncx-directory)))
+    filename))
+
+(defun nov2note--get-heading-target-list ()
+  "返回当前nov页面中有效的 heading target"
+  (assoc-string (nov2note--get-current-filename) nov2note-filename-heading-target-alist))
+
+(defun nov2note--heading-target-p (target)
+  "判断`TARGET' 是否为标记标题的 target"
+  (member target (nov2note--get-valid-heading-target-list)))
+
 (defun nov2note--generate-id-by-navpoint (dom)
   (let* ((url (xml-get-attribute (xml-query '(content) dom) 'src))
          (url-filename-and-target (nov-url-filename-and-target url))
          (filename (nth 0 url-filename-and-target))
          (target (nth 1 url-filename-and-target)))
+    (push target (alist-get filename nov2note-filename-heading-target-alist
+                            nil nil #'string=))
     (nov2note--construct-id nov-file-name filename target)))
 
 ;; 将 navpoint 转换成 org heading 格式
@@ -107,51 +130,78 @@
 ;; 4. 将选择的内容添加到笔记文件对应的 heading 中
 ;; 4.1 获取当前 nov 页面对应的日记文件中的标题ID
 
-(defun nov2note--find-next-text-property (prop)
-  "跳到下一个包含`PROP'属性的文本位置"
-  (or (get-text-property (point) prop)
-      (get-text-property (or (next-single-property-change (point) prop)
-                             (point))
-                         prop)))
+;; (defun nov2note--find-next-text-property-location (prop &optional pos)
+;;   "找到下一个包含`PROP'属性的文本位置"
+;;   (let ((pos (or pos (point))))
+;;     (if (get-text-property pos prop)
+;;         pos
+;;       (next-single-property-change pos prop))))
 
-(defun nov2note--find-previous-text-property (prop)
-  "跳到上一个包含`PROP'属性的文本位置"
-  (or (get-text-property (point) prop)
-      (get-text-property (let ((pos (previous-single-property-change (point) prop)))
-                           (if pos
-                               (- pos 1)
-                             (point)))
-                         prop)))
+;; (defun nov2note--find-next-text-property (prop)
+;;   "跳到下一个包含`PROP'属性的文本位置"
+;;   (let ((pos (nov2note--find-next-text-property-location prop)))
+;;     (when pos
+;;       (goto-char pos)
+;;       (get-text-property pos prop))))
+
+(defun nov2note--find-previous-text-property-location (prop &optional pos)
+  "找到上一个包含`PROP'属性的文本位置"
+  (let ((pos (or pos (point))))
+    (if (get-text-property pos prop)
+        pos
+      (- (previous-single-property-change pos prop) 1))))
+
+;; (defun nov2note--find-previous-text-property (prop)
+;;   "跳到上一个包含`PROP'属性的文本位置,并返回 `PROP' 的值"
+;;   (let ((pos (nov2note--find-previous-text-property-location prop)))
+;;     (when pos
+;;       (goto-char pos)
+;;       (get-text-property pos prop))))
+
+(defun nov2note--find-previous-heading-target (&optional start)
+  (let* ((start (or start (point)))
+         (pos (nov2note--find-previous-text-property-location 'shr-target-id
+                                                              start))
+         (target (when pos
+                   (get-text-property pos 'shr-target-id))))
+    (when target
+      (if (nov2note--heading-target-p target)
+          target
+        (when (> pos 1)
+          (nov2note--find-previous-heading-target (- pos 1)))))))
+
 
 (defun nov2note--get-current-heading-id ()
   "获取当前 nov 页面对应的日记文件中的标题ID"
-  (let* ((document (cdr (aref nov-documents nov-documents-index)))
-         (ncx-path (nov2note--get-ncx-path))
-         (ncx-directory (file-name-directory ncx-path))
-         (filename (file-relative-name document ncx-directory))
+  (let* ((filename (nov2note--get-current-filename))
          ;; shr 通过 shr-target-id 属性来标记 target
-         (target (nov2note--find-previous-text-property 'shr-target-id)))
+         (target (nov2note--find-previous-heading-target)))
     (nov2note--construct-id nov-file-name filename target)))
+
+(defun nov2note-find-the-location (id)
+  "定位到记录笔记的地点"
+  (let ((pos (or (org-find-entry-with-id id)
+                 (point-max))))
+    (goto-char pos)
+    ;; 跳转到下一个同级或子 heading 之前
+    (if (org-goto-first-child)
+        (left-char)
+      (org-end-of-subtree))))
 
 ;; 4.2 将选择的内容添加到笔记文件对应的 heading 中
 (defun nov2note ()
   (interactive)
-  (let* ((content (if (region-active-p) 
+  (let* ((content (if (region-active-p)
 	                    (buffer-substring-no-properties (region-beginning) (region-end))
 	                  (error "请选择要记录的内容")))
          (id (nov2note--get-current-heading-id)))
     (save-window-excursion
       (save-mark-and-excursion
         (nov2note-open-note-file)
-        (let ((pos (or (org-find-entry-with-id id)
-                       (point-max))))
-          (goto-char pos)
-          ;; 跳转到下一个同级或子 heading 之前
-          (if (org-goto-first-child)
-              (left-char)
-            (org-end-of-subtree))
-          (org-newline-and-indent)
-          (insert content))))))
+        (nov2note-find-the-location id)
+        (org-newline-and-indent)
+        (insert content)))))
+
 
 ;; provide feature
 (provide 'nov2note)
