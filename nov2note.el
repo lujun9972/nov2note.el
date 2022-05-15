@@ -1,4 +1,5 @@
 ;; -*- lexical-binding: t; -*-
+(require 'nov)
 (require 'xml)
 (require 'xml-query)
 ;; 1. 打开 epub 对应的笔记文件
@@ -203,7 +204,7 @@
         (insert content)))))
 
 ;; 4.3 将选择的内容通过 `org-capture' 添加到笔记文件对应的 heading 中
-(defvar nov2note-capture-template "%i\n%a"
+(defvar nov2note-capture-template '("%i\n%a" :immediate-finish t)
   "捕获内容的模板，语法参见 `org-capture-templates' 中的template部分")
 
 (defun nov2note-capture ()
@@ -214,7 +215,7 @@
          (org-capture-templates `(("n" "Note taking" plain
                                    (file+function ,(nov2note-create-note-file)
                                                   ,location-finder-fn)
-                                   ,nov2note-capture-template))))
+                                   ,@nov2note-capture-template))))
     (message "%s" org-capture-templates)
     (org-capture nil "n")))
 
