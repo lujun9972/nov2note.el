@@ -220,7 +220,6 @@
                                    (file+function ,(nov2note-create-note-file)
                                                   ,location-finder-fn)
                                    ,@nov2note-capture-template))))
-    (message "%s" org-capture-templates)
     (org-capture nil "n")))
 
 ;; provide feature
