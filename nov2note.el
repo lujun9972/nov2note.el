@@ -2,10 +2,14 @@
 (require 'nov)
 (require 'xml)
 (require 'xml-query)
+
 ;; 1. 打开 epub 对应的笔记文件
 ;; 1.1 定义笔记存放的位置
-(defvar nov2note-directory org-directory)
-;; (setq nov2note-directory (expand-file-name "Reading" org-roam-directory))
+(defvar nov2note-directory (expand-file-name
+                            "Reading"
+                            (or (bound-and-true-p org-roam-directory)
+                                (bound-and-true-p org-directory)
+                                "~")))
 ;; 1.2 笔记文件名默认使用 epub 文件 metada 中的 title,若没有 title,则使用 epub 文件名
 (defun nov2note--get-note-file-name ()
   (let ((nov-title (alist-get 'title nov-metadata))
