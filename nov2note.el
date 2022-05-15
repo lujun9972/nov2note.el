@@ -202,6 +202,21 @@
         (org-newline-and-indent)
         (insert content)))))
 
+;; 4.3 将选择的内容通过 `org-capture' 添加到笔记文件对应的 heading 中
+(defvar nov2note-capture-template "%i\n%a"
+  "捕获内容的模板，语法参见 `org-capture-templates' 中的template部分")
+
+(defun nov2note-capture ()
+  (interactive)
+  (let* ((id (nov2note--get-current-heading-id))
+         (location-finder-fn (lambda ()
+                               (nov2note-find-the-location id)))
+         (org-capture-templates `(("n" "Note taking" plain
+                                   (file+function ,(nov2note-create-note-file)
+                                                  ,location-finder-fn)
+                                   ,nov2note-capture-template))))
+    (message "%s" org-capture-templates)
+    (org-capture nil "n")))
 
 ;; provide feature
 (provide 'nov2note)
