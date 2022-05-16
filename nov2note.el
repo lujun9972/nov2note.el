@@ -73,7 +73,7 @@
 
 (defun nov2note--heading-target-p (target)
   "判断`TARGET' 是否为标记标题的 target"
-  (member target (nov2note--get-valid-heading-target-list)))
+  (member target (nov2note--get-heading-target-list)))
 
 (defun nov2note--generate-id-by-navpoint (dom)
   (let* ((url (xml-get-attribute (xml-query '(content) dom) 'src))
