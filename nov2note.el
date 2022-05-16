@@ -170,7 +170,7 @@
          (pos (nov2note--find-previous-text-property-location 'shr-target-id
                                                               start))
          (target (when pos
-                   (get-text-property pos 'shr-target-id))))
+                   (car (get-text-property pos 'shr-target-id)))))
     (when target
       (if (nov2note--heading-target-p target)
           target
