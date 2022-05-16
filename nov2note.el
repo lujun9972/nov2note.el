@@ -154,7 +154,9 @@
   (let ((pos (or pos (point))))
     (if (get-text-property pos prop)
         pos
-      (- (previous-single-property-change pos prop) 1))))
+      (setq pos (previous-single-property-change pos prop))
+      (when pos
+        (- pos 1)))))
 
 ;; (defun nov2note--find-previous-text-property (prop)
 ;;   "跳到上一个包含`PROP'属性的文本位置,并返回 `PROP' 的值"
@@ -213,6 +215,9 @@
 
 (defun nov2note-capture ()
   (interactive)
+  ;; 若没有登记合法的 heading target,那么需要通过 =nov2note--generate-heading-from-ncx= 来重新生成依次
+  (unless nov2note-filename-heading-target-alist
+    (nov2note--generate-headings-from-ncx))
   (let* ((id (nov2note--get-current-heading-id))
          (location-finder-fn (lambda ()
                                (nov2note-find-the-location id)))
