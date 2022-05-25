@@ -96,7 +96,7 @@
     (with-temp-buffer
       (org-mode)
       (insert (format "%s %s\n" heading-level navLabel))
-      (org-set-property "ID" id)
+      (org-set-property "NOV2NOTE_ID" id)
       (insert subheadings)
       (buffer-substring-no-properties (point-min) (point-max)))))
 
@@ -187,7 +187,7 @@
 
 (defun nov2note-find-the-location (id)
   "定位到记录笔记的地点"
-  (let ((pos (or (org-find-entry-with-id id)
+  (let ((pos (or (org-find-property "NOV2NOTE_ID" id)
                  (point-max))))
     (goto-char pos)
     ;; 跳转到下一个同级或子 heading 之前
