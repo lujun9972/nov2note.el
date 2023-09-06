@@ -12,7 +12,7 @@
                                 "~")))
 ;; 1.2 笔记文件名默认使用 epub 文件 metada 中的 title,若没有 title,则使用 epub 文件名
 (defun nov2note--get-note-file-name ()
-  (let ((nov-title (alist-get 'title nov-metadata))
+  (let ((nov-title (replace-regexp-in-string "/" "-" (alist-get 'title nov-metadata)))
         (epub-file-name (file-name-base nov-file-name)))
     (file-name-with-extension (or nov-title epub-file-name)
                               ".org")))
@@ -196,18 +196,60 @@
       (org-end-of-subtree))))
 
 ;; 4.2 将选择的内容添加到笔记文件对应的 heading 中
+(require 'ol)
+
+(defun nov2note-convent2org--hanlder-image (content &optional start-pos)
+  (let* ((start-pos (or start-pos 0))
+         (display-start-pos (next-single-property-change start-pos 'display content)))
+    (if display-start-pos
+        (let* ((display-end-pos (next-single-property-change display-start-pos 'display content))
+               (display-properties (get-char-property display-start-pos 'display content))
+               (image-file (image-property display-properties :file))
+               (image-title (substring-no-properties content display-start-pos display-end-pos))
+               (org-image-link (org-link-make-string (concat "file:" image-file) image-title))
+               (head (substring content 0 display-start-pos))
+               (tail (substring content display-end-pos))
+               (content (concat head org-image-link tail)))
+          (nov2note-convent2org--hanlder-image content display-start-pos))
+      content)))
+
+(defun nov2note-convent2org--hanlder-url (content &optional start-pos)
+  (let* ((start-pos (or start-pos 0))
+         (url-start-pos (next-single-property-change start-pos 'shr-url content)))
+    (if url-start-pos
+        (let* ((url-end-pos (next-single-property-change url-start-pos 'shr-url content))
+               (url-link (get-char-property url-start-pos 'shr-url content))
+               (url-title (substring-no-properties content url-start-pos url-end-pos))
+               (org-url-link (org-link-make-string url-link url-title))
+               (head (substring content 0 url-start-pos))
+               (tail (substring content url-end-pos))
+               (content (concat head org-url-link tail)))
+          (nov2note-convent2org--hanlder-url content url-start-pos))
+      content)))
+
+(defun nov2note-convent2org (&optional content)
+  (let ((content (or content (if (region-active-p)
+	                               (buffer-substring (region-beginning) (region-end))
+	                             (error "请选择要记录的内容")))))
+    (nov2note-convent2org--hanlder-url
+     (nov2note-convent2org--hanlder-image content))))
+
 (defun nov2note ()
   (interactive)
+  (call-interactively #'org-store-link)
   (let* ((content (if (region-active-p)
-	                    (buffer-substring-no-properties (region-beginning) (region-end))
+	                    (buffer-substring (region-beginning) (region-end))
 	                  (error "请选择要记录的内容")))
+         (org-content (nov2note-convent2org content))
          (id (nov2note--get-current-heading-id)))
     (save-window-excursion
       (save-mark-and-excursion
         (nov2note-open-note-file)
         (nov2note-find-the-location id)
         (org-newline-and-indent)
-        (insert content)))))
+        (insert org-content)
+        (newline)
+        (org-insert-last-stored-link 1)))))
 
 ;; 4.3 将选择的内容通过 `org-capture' 添加到笔记文件对应的 heading 中
 (defvar nov2note-capture-template '("%i\n%a" :immediate-finish t)
