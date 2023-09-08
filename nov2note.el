@@ -227,47 +227,48 @@
           (nov2note-convent2org--hanlder-url content url-start-pos))
       content)))
 
-(defun nov2note-convent2org (&optional content)
-  (let ((content (or content (if (region-active-p)
-	                               (buffer-substring (region-beginning) (region-end))
-	                             (error "请选择要记录的内容")))))
-    (nov2note-convent2org--hanlder-url
-     (nov2note-convent2org--hanlder-image content))))
+(defun nov2note-convent2org (content)
+  (nov2note-convent2org--hanlder-url
+   (nov2note-convent2org--hanlder-image content)))
 
-(defun nov2note ()
-  (interactive)
-  (call-interactively #'org-store-link)
-  (let* ((content (if (region-active-p)
-	                    (buffer-substring (region-beginning) (region-end))
-	                  (error "请选择要记录的内容")))
-         (org-content (nov2note-convent2org content))
-         (id (nov2note--get-current-heading-id)))
-    (save-window-excursion
-      (save-mark-and-excursion
-        (nov2note-open-note-file)
-        (nov2note-find-the-location id)
-        (org-newline-and-indent)
-        (insert org-content)
-        (newline)
-        (org-insert-last-stored-link 1)))))
+;; (defun nov2note ()
+;;   (interactive)
+;;   (call-interactively #'org-store-link)
+;;   (let* ((content (if (region-active-p)
+;; 	                    (buffer-substring (region-beginning) (region-end))
+;; 	                  (error "请选择要记录的内容")))
+;;          (org-content (nov2note-convent2org content))
+;;          (id (nov2note--get-current-heading-id)))
+;;     (save-window-excursion
+;;       (save-mark-and-excursion
+;;         (nov2note-open-note-file)
+;;         (nov2note-find-the-location id)
+;;         (org-newline-and-indent)
+;;         (insert org-content)
+;;         (newline)
+;;         (org-insert-last-stored-link 1)))))
 
 ;; 4.3 将选择的内容通过 `org-capture' 添加到笔记文件对应的 heading 中
 (defvar nov2note-capture-template '("%i\n%a" :immediate-finish t)
-  "捕获内容的模板，语法参见 `org-capture-templates' 中的template部分")
+  "捕获内容的模板，语法参见 `org-capture-templates' 中的template部分.")
 
 (defun nov2note-capture ()
   (interactive)
-  ;; 若没有登记合法的 heading target,那么需要通过 =nov2note--generate-heading-from-ncx= 来重新生成依次
+  ;; 若没有登记合法的 heading target,那么需要通过 =nov2note--generate-heading-from-ncx= 来重新生成
   (unless nov2note-filename-heading-target-alist
     (nov2note--generate-headings-from-ncx))
   (let* ((id (nov2note--get-current-heading-id))
          (location-finder-fn (lambda ()
                                (nov2note-find-the-location id)))
+         (content (if (region-active-p)
+	                        (buffer-substring (region-beginning) (region-end))
+	                      (error "请选择要记录的内容")))
+         (org-content (nov2note-convent2org content))
          (org-capture-templates `(("n" "Note taking" plain
                                    (file+function ,(nov2note-create-note-file)
                                                   ,location-finder-fn)
                                    ,@nov2note-capture-template))))
-    (org-capture nil "n")))
+    (org-capture-string org-content "n")))
 
 ;; provide feature
 (provide 'nov2note)
