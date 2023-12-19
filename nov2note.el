@@ -195,6 +195,13 @@
         (left-char)
       (org-end-of-subtree))))
 
+(defun nov2note-get-attach-dir ()
+  (let* ((data-dir (expand-file-name "data" nov2note-directory))
+         (attach-dir (expand-file-name (nov2note--get-note-file-name)
+                                       data-dir)))
+    (mkdir attach-dir t)
+    (file-name-as-directory attach-dir)))
+
 ;; 4.2 将选择的内容添加到笔记文件对应的 heading 中
 (require 'ol)
 
@@ -204,13 +211,18 @@
     (if display-start-pos
         (let* ((display-end-pos (next-single-property-change display-start-pos 'display content))
                (display-properties (get-char-property display-start-pos 'display content))
-               (image-file (image-property display-properties :file))
-               (image-title (substring-no-properties content display-start-pos display-end-pos))
-               (org-image-link (org-link-make-string (concat "file:" image-file) image-title))
-               (head (substring content 0 display-start-pos))
-               (tail (substring content display-end-pos))
-               (content (concat head org-image-link tail)))
-          (nov2note-convent2org--hanlder-image content display-start-pos))
+               (image-file (image-property display-properties :file)))
+          (if image-file
+              (let* ((org-attach-file (expand-file-name (file-name-nondirectory image-file)
+                                                        (nov2note-get-attach-dir)))
+                     (_ (copy-file image-file org-attach-file))
+                     (image-title (substring-no-properties content display-start-pos display-end-pos))
+                     (org-image-link (org-link-make-string (concat "file:" org-attach-file) image-title))
+                     (head (substring content 0 display-start-pos))
+                     (tail (substring content display-end-pos))
+                     (content (concat head org-image-link tail)))
+                (nov2note-convent2org--hanlder-image content display-start-pos))
+            content))
       content)))
 
 (defun nov2note-convent2org--hanlder-url (content &optional start-pos)
@@ -227,9 +239,19 @@
           (nov2note-convent2org--hanlder-url content url-start-pos))
       content)))
 
+(defun nov2note-convent2org--handler-stars (content)
+  "remove headline stars(*) which is symbol of headline in org-mode."
+  (with-temp-buffer
+    (insert content)
+    (goto-char (point-min))
+    (while (re-search-forward "^* " nil t)
+      (replace-match "+ "))
+    (buffer-string)))
+
 (defun nov2note-convent2org (content)
-  (nov2note-convent2org--hanlder-url
-   (nov2note-convent2org--hanlder-image content)))
+  (nov2note-convent2org--handler-stars
+   (nov2note-convent2org--hanlder-url
+    (nov2note-convent2org--hanlder-image content))))
 
 ;; (defun nov2note ()
 ;;   (interactive)
