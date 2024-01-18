@@ -2,6 +2,7 @@
 (require 'nov)
 (require 'xml)
 (require 'xml-query)
+(require 'nov2note-convent2org)
 
 ;; 1. 打开 epub 对应的笔记文件
 ;; 1.1 定义笔记存放的位置
@@ -116,13 +117,18 @@
          (toc (nov2note--parse-ncx ncx-path))
          (navPoint-list (nov2note--get-navpoints-from-ncx toc)))
     (nov2note-navpointlist2headings navPoint-list)))
+
+(defun nov2note-generate-headings ()
+  (if (version< nov-epub-version "3.0")
+      (nov2note--generate-headings-from-ncx)
+    (error "epub3 not support Yet!")))
 ;; 3.2 打开 epub 对应的笔记文档，若笔记文档不存在则生成新笔记
 (defun nov2note-create-note-file ()
   "若 epub 对应的笔记文档不存在则生成新笔记，返回笔记文档路径"
   (interactive)
   (let ((note-file (nov2note-get-note-file-path)))
     (unless (file-exists-p note-file)
-      (write-region (nov2note--generate-headings-from-ncx)
+      (write-region (nov2note-generate-headings)
                     nil
                     note-file))
     note-file))
@@ -190,68 +196,13 @@
   (let ((pos (or (org-find-property "NOV2NOTE_ID" id)
                  (point-max))))
     (goto-char pos)
-    ;; 跳转到下一个同级或子 heading 之前
-    (if (org-goto-first-child)
+    ;; 跳转到下一个同级 heading 之前
+    (if (org-goto-sibling)
+        ;; (org-goto-first-child)
         (left-char)
-      (org-end-of-subtree))))
-
-(defun nov2note-get-attach-dir ()
-  (let* ((data-dir (expand-file-name "data" nov2note-directory))
-         (attach-dir (expand-file-name (nov2note--get-note-file-name)
-                                       data-dir)))
-    (mkdir attach-dir t)
-    (file-name-as-directory attach-dir)))
+        (org-end-of-subtree))))
 
 ;; 4.2 将选择的内容添加到笔记文件对应的 heading 中
-(require 'ol)
-
-(defun nov2note-convent2org--hanlder-image (content &optional start-pos)
-  (let* ((start-pos (or start-pos 0))
-         (display-start-pos (next-single-property-change start-pos 'display content)))
-    (if display-start-pos
-        (let* ((display-end-pos (next-single-property-change display-start-pos 'display content))
-               (display-properties (get-char-property display-start-pos 'display content))
-               (image-file (image-property display-properties :file)))
-          (if image-file
-              (let* ((org-attach-file (expand-file-name (file-name-nondirectory image-file)
-                                                        (nov2note-get-attach-dir)))
-                     (_ (copy-file image-file org-attach-file))
-                     (image-title (substring-no-properties content display-start-pos display-end-pos))
-                     (org-image-link (org-link-make-string (concat "file:" org-attach-file) image-title))
-                     (head (substring content 0 display-start-pos))
-                     (tail (substring content display-end-pos))
-                     (content (concat head org-image-link tail)))
-                (nov2note-convent2org--hanlder-image content display-start-pos))
-            content))
-      content)))
-
-(defun nov2note-convent2org--hanlder-url (content &optional start-pos)
-  (let* ((start-pos (or start-pos 0))
-         (url-start-pos (next-single-property-change start-pos 'shr-url content)))
-    (if url-start-pos
-        (let* ((url-end-pos (next-single-property-change url-start-pos 'shr-url content))
-               (url-link (get-char-property url-start-pos 'shr-url content))
-               (url-title (substring-no-properties content url-start-pos url-end-pos))
-               (org-url-link (org-link-make-string url-link url-title))
-               (head (substring content 0 url-start-pos))
-               (tail (substring content url-end-pos))
-               (content (concat head org-url-link tail)))
-          (nov2note-convent2org--hanlder-url content url-start-pos))
-      content)))
-
-(defun nov2note-convent2org--handler-stars (content)
-  "remove headline stars(*) which is symbol of headline in org-mode."
-  (with-temp-buffer
-    (insert content)
-    (goto-char (point-min))
-    (while (re-search-forward "^* " nil t)
-      (replace-match "+ "))
-    (buffer-string)))
-
-(defun nov2note-convent2org (content)
-  (nov2note-convent2org--handler-stars
-   (nov2note-convent2org--hanlder-url
-    (nov2note-convent2org--hanlder-image content))))
 
 ;; (defun nov2note ()
 ;;   (interactive)
@@ -274,11 +225,12 @@
 (defvar nov2note-capture-template '("%i\n%a" :immediate-finish t)
   "捕获内容的模板，语法参见 `org-capture-templates' 中的template部分.")
 
+;;;###autoload
 (defun nov2note-capture ()
   (interactive)
   ;; 若没有登记合法的 heading target,那么需要通过 =nov2note--generate-heading-from-ncx= 来重新生成
   (unless nov2note-filename-heading-target-alist
-    (nov2note--generate-headings-from-ncx))
+    (nov2note-generate-headings))
   (let* ((id (nov2note--get-current-heading-id))
          (location-finder-fn (lambda ()
                                (nov2note-find-the-location id)))
