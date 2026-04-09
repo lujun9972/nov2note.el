@@ -22,7 +22,7 @@
   (expand-file-name (nov2note--get-note-file-name)
                     nov2note-directory))
 ;; 2 根据文档结构创建全新的笔记文件
-;; 2.1 找出 toc.ncx 文件路径，该文件中存储了 epub 的文档结构
+;; 2.1 找出 TOC 文件路径（EPUB2 为 toc.ncx，EPUB3 为 nav.xhtml）
 (defun nov2note--get-ncx-path ()
   (let* ((nov-documents-alist (mapcar #'identity nov-documents))
          (ncx-path (alist-get nov-toc-id nov-documents-alist)))
