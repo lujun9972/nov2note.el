@@ -197,10 +197,21 @@ If it only has a <span>, generate a heading without ID."
                                 (nov2note--nav-li2heading li level))))
     org-content))
 
+(defun nov2note--generate-headings-from-nav ()
+  "Generate Org headings from EPUB3 NAV file."
+  (let* ((nav-dom (nov2note--parse-nav))
+         (toc-nav (nov2note--get-toc-nav-element nav-dom))
+         (toc-ol (when toc-nav
+                   (car (seq-filter (lambda (child) (eq (dom-tag child) 'ol))
+                                    (dom-children toc-nav))))))
+    (if toc-ol
+        (nov2note--nav-ol2headings toc-ol 1)
+      "")))
+
 (defun nov2note-generate-headings ()
   (if (version< nov-epub-version "3.0")
       (nov2note--generate-headings-from-ncx)
-    (error "epub3 not support Yet!")))
+    (nov2note--generate-headings-from-nav)))
 ;; 3.2 打开 epub 对应的笔记文档，若笔记文档不存在则生成新笔记
 (defun nov2note-create-note-file ()
   "若 epub 对应的笔记文档不存在则生成新笔记，返回笔记文档路径"
