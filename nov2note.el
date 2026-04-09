@@ -274,12 +274,31 @@ If it only has a <span>, generate a heading without ID."
           (nov2note--find-previous-heading-target (- pos 1)))))))
 
 
+(defun nov2note--find-nearest-heading-id ()
+  "查找最近的前一个有 NCX 目录项的页面的 heading ID。
+当当前页面在 NCX 中没有对应的目录项时，向前遍历 nov-documents 找到
+最近的拥有目录项的页面，并使用该页面的 heading ID。"
+  (let ((idx nov-documents-index)
+        (ncx-directory (file-name-directory (nov2note--get-ncx-path)))
+        result)
+    (while (and (>= idx 0) (not result))
+      (let* ((document (cdr (aref nov-documents idx)))
+             (filename (file-relative-name document ncx-directory))
+             (entry (assoc-string filename nov2note-filename-heading-target-alist)))
+        (when entry
+          (setq result (nov2note--construct-id nov-file-name filename (cadr entry)))))
+      (setq idx (1- idx)))
+    result))
+
 (defun nov2note--get-current-heading-id ()
   "获取当前 nov 页面对应的日记文件中的标题ID"
   (let* ((filename (nov2note--get-current-filename))
          ;; shr 通过 shr-target-id 属性来标记 target
          (target (nov2note--find-previous-heading-target)))
-    (nov2note--construct-id nov-file-name filename target)))
+    (if target
+        (nov2note--construct-id nov-file-name filename target)
+      ;; 当前页面在 NCX 中没有对应的目录项，查找最近的前一个有目录项的页面
+      (nov2note--find-nearest-heading-id))))
 
 (defun nov2note-find-the-location (id)
   "定位到记录笔记的地点"
