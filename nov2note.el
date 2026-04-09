@@ -118,6 +118,85 @@
          (navPoint-list (nov2note--get-navpoints-from-ncx toc)))
     (nov2note-navpointlist2headings navPoint-list)))
 
+;; 2.4 EPUB3 NAV 解析
+(defun nov2note--parse-nav (&optional nav-path)
+  "Parse NAV file and return DOM tree.
+NAV-PATH defaults to the TOC document path from `nov-documents'."
+  (let ((nav-path (or nav-path (nov2note--get-ncx-path))))
+    (with-temp-buffer
+      (insert-file-contents nav-path)
+      (libxml-parse-html-region (point-min) (point-max)))))
+
+(defun nov2note--get-toc-nav-element (dom)
+  "Find the <nav> element with epub:type=\"toc\" from DOM.
+Fallback to first <nav> containing an <ol>."
+  (or (dom-search dom
+        (lambda (node)
+          (and (eq (dom-tag node) 'nav)
+               (string= (dom-attr node 'epub:type) "toc"))))
+      ;; Fallback: first <nav> with an <ol> child
+      (dom-search dom
+        (lambda (node)
+          (and (eq (dom-tag node) 'nav)
+               (seq-some (lambda (child) (eq (dom-tag child) 'ol))
+                         (dom-children node)))))))
+
+(defun nov2note--nav-li2heading (li-element level)
+  "Convert a NAV <li> ELEMENT to an Org heading at LEVEL.
+If the <li> contains an <a> with href, generate a heading with NOV2NOTE_ID.
+If it only has a <span>, generate a heading without ID."
+  (let* ((heading-level (string-join (make-list level "*")))
+         (a-element (dom-by-tag li-element 'a))
+         (span-element (dom-by-tag li-element 'span))
+         (has-link (and a-element (> (length a-element) 0))))
+    (if has-link
+        (let* ((a-node (car a-element))
+               (navLabel (dom-text a-node))
+               (url (dom-attr a-node 'href))
+               (url-filename-and-target (nov-url-filename-and-target url))
+               (filename (nth 0 url-filename-and-target))
+               (target (nth 1 url-filename-and-target))
+               (id (progn
+                     (push target (alist-get filename nov2note-filename-heading-target-alist
+                                             nil nil #'string=))
+                     (nov2note--construct-id nov-file-name filename target))))
+          ;; Find nested <ol> within this <li>
+          (let* ((nested-ol (seq-filter (lambda (child) (eq (dom-tag child) 'ol))
+                                        (dom-children li-element)))
+                 (subheadings (if nested-ol
+                                  (nov2note--nav-ol2headings (car nested-ol) (+ 1 level))
+                                "")))
+            (with-temp-buffer
+              (org-mode)
+              (insert (format "%s %s\n" heading-level navLabel))
+              (org-set-property "NOV2NOTE_ID" id)
+              (insert subheadings)
+              (buffer-substring-no-properties (point-min) (point-max)))))
+      ;; No <a> link — use <span> text as heading title without ID
+      (let* ((navLabel (if (and span-element (> (length span-element) 0))
+                           (dom-text (car span-element))
+                         "Untitled"))
+             (nested-ol (seq-filter (lambda (child) (eq (dom-tag child) 'ol))
+                                    (dom-children li-element)))
+             (subheadings (if nested-ol
+                              (nov2note--nav-ol2headings (car nested-ol) (+ 1 level))
+                            "")))
+        (with-temp-buffer
+          (org-mode)
+          (insert (format "%s %s\n" heading-level navLabel))
+          (insert subheadings)
+          (buffer-substring-no-properties (point-min) (point-max)))))))
+
+(defun nov2note--nav-ol2headings (ol-element level)
+  "Convert all <li> children of OL-ELEMENT to Org headings at LEVEL."
+  (let ((li-elements (seq-filter (lambda (child) (eq (dom-tag child) 'li))
+                                 (dom-children ol-element)))
+        (org-content ""))
+    (dolist (li li-elements)
+      (setq org-content (concat org-content "\n"
+                                (nov2note--nav-li2heading li level))))
+    org-content))
+
 (defun nov2note-generate-headings ()
   (if (version< nov-epub-version "3.0")
       (nov2note--generate-headings-from-ncx)
